@@ -1,0 +1,93 @@
+#plugin Fix Small Bodies Distance
+#author Alan Bartholet
+#desc   Adds a distance to the 'Small Bodies' to prevent invalid floating point violation error when opening Travel Calculator.
+
+'Version 1.0
+
+'Declare global variables
+Dim unloadBody    'as Bool
+Dim sector        'as Sector
+
+'Load the sector
+sector = GetCurrentSector
+
+'Call the main sub
+Main()
+
+Sub Main()
+	'Declare variables
+	Dim body         'as Body
+	Dim i, keyHit    'as Int
+
+	'Display processing message
+	sector.RenderMessageBig = "Running Fix Small Bodies..."
+	sector.RenderMessageSmall = "Press 'Esc' to Exit"
+	RefreshScene
+
+	'Loop through all systems
+	For i = 1 To sector.SystemCount
+
+		'Check for Escape Key
+		keyHit = GetKey()
+		If keyHit = 27 Then
+			Exit Sub
+		End If
+		ProcessMessages
+
+		'Select the current root body
+		body = sector.GetSystem(i - 1)
+
+		'Make sure the root body is loaded
+		If Not body.Loaded Then
+			sector.DynaLoad(body) 'Load the body into memory
+			unloadBody = True     'Flag the body to be unloaded
+		End If
+
+		'Display processing message
+		If FormatNumber(((i - 1) / sector.SystemCount) * 100, 0) Mod 2 = 0 Then
+			sector.RenderMessageBig = "Running Running Fix Small Bodies: " & FormatNumber(((i - 1) / sector.SystemCount) * 100, 0) & "%"
+			sector.RenderMessageSmall = "Press 'Esc' to Exit"
+			RefreshScene
+		End If
+
+		'Fix the small bodies
+		FixSmallBodiesDistance(body)
+
+		'Unload the body if there haven't been any changes made
+		If unloadBody = True Then
+			sector.DynaUnload(body)    'Unload the body from memory
+		Else
+			body.UpdateRootBody()      'Update the root body
+			body.ModifySystem()        'Flag the system as modified
+		End If
+	Next
+End Sub
+
+
+Sub FixSmallBodiesDistance(body)
+	'Edit Small Body
+	If body.TypeID = BODY_TYPE_SMALLBODY Then
+		If body.Distance = 0 Then
+			'According to NBOS Support
+			''Small bodies' is really just a note that there are numerous small,
+			'unremarkable bodies in orbit (small chunks of rock).  Its not a single
+			'body with a single orbit, but rather debris found in orbit at various
+			'places.  So there's no orbital parameters per se, and they arent shown in
+			'the system diagram.  Think of it as the orbital equivalent of a 'look out
+			'for falling rocks' sign.
+			'Unfortunately having a small body with a distance of 0 causes the travel calculator
+			'to have an invalid floating point violation error so in order to fix this we will set
+			'the distance to 0.01.  This will achieve the same affect for all intents and purposes
+			'without causing the error.
+			body.Distance = 0.01
+			unloadBody = False
+		End If
+	End If
+
+	'Loop through each child body
+	If body.ChildrenCount() > 0 Then
+		For i = 1 To body.ChildrenCount()
+			FixSmallBodiesDistance body.GetChild(i - 1)
+		Next
+	End If
+End Sub
